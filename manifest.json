@@ -1,0 +1,34 @@
+{
+  "manifest_version": 2,
+  "name": "TST Workspaces",
+  "version": "1.0",
+
+  "description": "Manage workspaces while maintaining TST trees",
+
+  "browser_specific_settings": {
+    "gecko": {
+        "id": "tstworkspaces_seanwhatnoio@whatnoio"
+    }
+},
+
+  "icons": {
+    "48": "icons/bookcase.svg"
+  },
+
+  "permissions": [
+      "bookmarks",
+      "contextMenus",
+      "storage",
+      "tabs"
+  ],
+
+  "browser_action": {
+      "default_icon": "icons/bookcase.svg",
+      "default_title": "TST Workspaces",
+      "default_popup": "src/popup.html"
+  },
+
+  "background": {
+    "scripts": ["src/background.js"]
+  }
+}
