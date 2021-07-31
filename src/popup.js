@@ -43,10 +43,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let rmElem = document.getElementById("tstworkspaces-remove").workspace_name;
     workspaces.forEach((workspace) => {
       let rlOpt = document.createElement("option");
-      rlOpt.value = rlOpt.innerHTML = workspace;
+      rlOpt.value = rlOpt.textContent = workspace;
       rlElem.appendChild(rlOpt);
       let rmOpt = document.createElement("option");
-      rmOpt.value = rmOpt.innerHTML = workspace;
+      rmOpt.value = rmOpt.textContent = workspace;
       rmElem.appendChild(rmOpt);
     });
   });
