@@ -9,7 +9,7 @@ function listener(type) {
     e.preventDefault();
     let form = e.target;
     try {
-      let value = {type: type}
+      let value = { type: type };
       if (form.workspace_name) {
         value["name"] = form.workspace_name.value;
       }

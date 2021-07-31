@@ -8,7 +8,8 @@ Create a new workspace with the given name or overrite an existing one.
 Select workspace to load in a new window from existing saved ones.
 
 ### Remove
-Currently doesn't do anything other than print the workspace bookmark info to the console.
+Removes the selected workspace from the storage and bookmarks.
+Permant change, no way to undo.
 
 
 ### Load from Bookmarks
@@ -17,4 +18,3 @@ removing it.
 
 ## License
 [MIT License](https://opensource.org/licenses/MIT)
-
