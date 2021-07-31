@@ -1,5 +1,7 @@
 # TST Workspaces
 
+![Popup Page](./popup.png)
+
 ### Create
 Create a new workspace with the given name or overrite an existing one.
 - Will be split into two functions in the future.
