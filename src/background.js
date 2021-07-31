@@ -24,14 +24,14 @@ async function messageTST(value) {
 }
 
 async function storageGet(key) {
-  console.debug("getting from storage", key);
+  console.debug("storage get", key);
   let value = await browser.storage.local.get(key);
   return value[key];
 }
 
-function storageSet(value) {
-  console.debug("setting new storage value", value);
-  return browser.storage.local.set(value);
+async function storageSet(value) {
+  console.debug("storage set", value);
+  return await browser.storage.local.set(value);
 }
 
 async function getFolder(id) {
@@ -52,18 +52,21 @@ async function bookmarkCreate(bookmark) {
 
 async function getBookmarkRoot() {
   let tree = await bookmarkTree("unfiled_____");
-  console.debug("tree", tree);
   let folders = tree[0].children.filter((bookmark) => {
     return bookmark.type == "folder" && bookmark.title == TSTW_BOOKMARK_ROOT;
   });
-  return folders ? folders[0] : null;
+  return folders[0];
 }
 
 function wsName(name) {
   return name.replace(`${TSTW_PREFIX}_`, "");
 }
 
-async function createWorkspaceFolder(workspace) {
+function genName(name) {
+  return `${TSTW_PREFIX}_${name}`;
+}
+
+async function getWorkspaceFolder(workspace) {
   let name = wsName(workspace);
   let root = await getBookmarkRoot();
   for (const bookmark of root.children) {
@@ -71,17 +74,32 @@ async function createWorkspaceFolder(workspace) {
       return bookmark;
     }
   }
-  let newFolder = await browser.bookmarks.create({
+  return null;
+}
+
+async function createWorkspaceFolder(workspace) {
+  let name = wsName(workspace);
+  let root = await getBookmarkRoot();
+  return await browser.bookmarks.create({
     title: name,
     parentId: root.id,
     type: "folder",
   });
-  return newFolder;
+}
+
+async function getOrCreateWorkspaceFolder(workspace) {
+  let folder = await getWorkspaceFolder(workspace);
+  console.warn(folder);
+  if (folder == null || folder == undefined) {
+    folder = await createWorkspaceFolder(workspace);
+  }
+  console.warn(folder);
+  return folder;
 }
 
 function flattenTabs(tabs) {
   let result = [];
-  tabs.forEach((tab) => {
+  for (const tab of tabs) {
     let children = flattenTabs(tab.children);
     let indent = ">".repeat(tab.indent);
     if (indent.length > 0) {
@@ -92,25 +110,35 @@ function flattenTabs(tabs) {
     if (children.length) {
       result.push(...children);
     }
-  });
+  }
   return result;
 }
 
 async function setBookmarks(folder, tabs) {
-  // wtf??? why need to reverse twice??
-  let flat = flattenTabs(tabs).reverse();
-  flat.reverse();
+  let flat = flattenTabs(tabs);
   let tree = await bookmarkTree(folder);
   if (tree[0].children) {
-    tree[0].children.forEach(async (bookmark) => {
+    for (const bookmark of tree[0].children) {
       await bookmarkRemove(bookmark.id);
-    });
+    }
   }
-  flat.forEach(async (bookmark) => {
+  let bookmarks = [];
+  for (const i in flat) {
+    let bookmark = flat[i];
     bookmark["parentId"] = folder;
-    await bookmarkCreate(bookmark);
-  });
-  return await bookmarkTree(folder);
+    bookmark["index"] = parseInt(i);
+    let node = await bookmarkCreate(bookmark);
+    bookmarks.push(node);
+  }
+  return bookmarks;
+}
+
+async function getBookmarks(workspace) {
+  let folder = await getWorkspaceFolder(workspace);
+  if (folder == null || folder == undefined) {
+    return [];
+  }
+  return await bookmarkTree(folder.id);
 }
 
 async function getTabs() {
@@ -140,9 +168,66 @@ function formatTabList(tabs) {
   });
 }
 
+function indexesOf(array, value) {
+  let indexes = [];
+  let current = array.indexOf(value);
+  while (current != -1) {
+    indexes.push(current);
+    current = array.indexOf(value, current + 1);
+  }
+  return indexes;
+}
+
+function groupChildren(r, n) {
+  // https://stackoverflow.com/a/47906920
+  const lastSubArray = r[r.length - 1];
+  if (!lastSubArray || lastSubArray[lastSubArray.length - 1] !== n - 1) {
+    r.push([]);
+  }
+  r[r.length - 1].push(n);
+  return r;
+}
+
+function formatBookmarkList(bookmarks) {
+  let dicts = bookmarks.map((bookmark) => {
+    let split = bookmark.title.match(/^(>*)\s*(.*)/);
+    return {
+      id: bookmark.id,
+      indent: split[1].length,
+      states: [],
+      children: [],
+      info: {
+        title: split[2],
+        url: bookmark.url,
+        muted: false,
+        pinned: false,
+        reader: false,
+      },
+    };
+  });
+  let indents = dicts.map((b) => {
+    return b.indent;
+  });
+  let max = Math.max(...indents);
+  while (max != 0) {
+    let curIdxs = indexesOf(indents, max);
+    let groups = curIdxs.reduce(groupChildren, []);
+    for (const group of groups) {
+      let parent = dicts[group[0] - 1];
+      for (const i of group) {
+        parent.children.push(dicts[i]);
+      }
+    }
+    max--;
+  }
+  return dicts.filter((elem) => {
+    return elem.indent == 0;
+  });
+}
+
 async function createTree(window, tabs, parent = null) {
   let tab_ids = [];
-  await tabs.forEach(async (tab) => {
+  for (const tab of tabs) {
     let val = await messageTST({
       type: "create",
       params: {
@@ -163,7 +248,7 @@ async function createTree(window, tabs, parent = null) {
     if (tab.states.includes("subtree-collapsed")) {
       await messageTST({ type: "collapse-tree", tab: val.id });
     }
-  });
+  }
   return tab_ids;
 }
 
@@ -175,16 +260,40 @@ async function getWorkspaces() {
   return wsList;
 }
 
-async function storeTabList(workspace, tabs) {
+async function updateWorkspacesFromBookmarks() {
+  let workspaces = await getBookmarkRoot();
+  let tree = await bookmarkTree(workspaces.id);
+  let folders = tree[0].children.filter((val) => {
+    return val.type == "folder";
+  });
+  for (const folder of folders) {
+    let name = genName(folder.title);
+    let bookmarks = formatBookmarkList(folder.children);
+    await updateStorage(name, bookmarks);
+  }
+  return folders;
+}
+
+async function updateStorage(workspace, tabs) {
   let wsList = await getWorkspaces();
   if (!wsList.includes(workspace)) {
     wsList.push(workspace);
   }
   await storageSet({ [TSTW_WORKSPACES]: wsList });
   await storageSet({ [workspace]: tabs });
-  let wsFolder = await createWorkspaceFolder(workspace);
-  console.debug("wsFolder", wsFolder);
+  return wsList;
+}
+
+async function updateBookmarks(workspace, tabs) {
+  let wsFolder = await getOrCreateWorkspaceFolder(workspace);
+  console.warn("wsFolder", wsFolder);
   let bookmarks = await setBookmarks(wsFolder.id, tabs);
+  return [wsFolder, bookmarks];
+}
+
+async function storeTabList(workspace, tabs) {
+  let wsList = await updateStorage(workspace, tabs);
+  let [wsFolder, bookmarks] = await updateBookmarks(workspace, tabs);
   return {
     workspace: workspace,
     tabs: tabs,
@@ -196,14 +305,14 @@ async function storeTabList(workspace, tabs) {
 
 async function printTabs() {
   let tabs = getTabs();
-  storeTabList(TSTW_WORKSPACE, tabs);
+  return await storeTabList(TSTW_WORKSPACE, tabs);
 }
 
-async function reloadTabs(workspace) {
+async function reloadTabs(name) {
+  let workspace = genName(name);
   let res = await storageGet(workspace);
   let window = await browser.windows.create();
   let new_ids = await createTree(window.id, res);
-  console.debug("new ids created", new_ids);
   let new_tree = await messageTST({ type: "get-tree", window: window.id });
   browser.tabs.remove(new_tree[0].id);
 }
@@ -213,16 +322,23 @@ async function processMessage(message) {
     case "print":
       return new Promise(async (resolve) => {
         let tabs = await getTabs();
-        resolve({ tabs: tabs, name: message.name });
+        return resolve({ tabs: tabs, name: message.name });
       });
     case "create":
-      return new Promise(async (resolve) => {
+      return new Promise(async (resolve, reject) => {
+        if (!message.name) {
+          return reject("Name must not be blank");
+        }
+        let workspace = genName(message.name);
         let tabs = await getTabs();
-        resolve(storeTabList(`${TSTW_PREFIX}_${message.name}`, tabs));
+        return resolve(storeTabList(workspace, tabs));
       });
     case "reload":
-      return new Promise(async (resolve) => {
-        resolve(reloadTabs(`${TSTW_PREFIX}_${message.name}`));
+      return new Promise(async (resolve, reject) => {
+        if (!message.name) {
+          return reject("No workspace name passed in");
+        }
+        return resolve(reloadTabs(message.name));
       });
     case "workspaces":
       return new Promise(async (resolve) => {
@@ -230,29 +346,39 @@ async function processMessage(message) {
         let names = workspaces.map((name) => {
           return wsName(name);
         });
-        resolve(names);
+        return resolve(names);
+      });
+    case "remove":
+      console.debug("not actually removing yet");
+      return new Promise(async (resolve, reject) => {
+        if (!message.name) {
+          return reject("No workspace name passed in");
+        }
+        let tree = await getBookmarks(message.name);
+        if (tree.length == 0) {
+          return reject("Workspace does not exist");
+        }
+        let result = formatBookmarkList(tree[0].children);
+        return resolve(result);
+      });
+    case "load-bookmark":
+      return new Promise(async (resolve) => {
+        return resolve(updateWorkspacesFromBookmarks());
       });
   }
 }
 
 const contextMenuItems = [
   {
-    id: "tstworkspace-check",
-    title: "Check Tabs",
-    type: "normal",
-    contexts: ["page", "tab"],
-  },
-  {
-    id: "tstworkspace-reload",
-    title: "Reload Tabs",
+    id: "tstworkspace-save-current",
+    title: "Save Current Workspace",
     type: "normal",
     contexts: ["page", "tab"],
   },
 ];
 
 async function init() {
-  console.debug("Welcome to TST Workspaces");
-  console.debug("Registering addon to TST");
+  console.info("Welcome to TST Workspaces");
   await registerToTST();
 
   browser.runtime.onMessageExternal.addListener((message, sender) => {
@@ -268,32 +394,26 @@ async function init() {
 
   browser.runtime.onMessage.addListener(processMessage);
 
-  contextMenuItems.forEach(async (item) => {
+  for (const item of contextMenuItems) {
     browser.contextMenus.create(item);
     await messageTST({ type: "contextMenu-create", params: item });
-  });
+  }
 
-  browser.contextMenus.onClicked.addListener((info) => {
+  browser.contextMenus.onClicked.addListener(async (info) => {
     switch (info.menuItemId) {
-      case "tstworkspace-check":
-        console.debug("Checking tabs");
-        printTabs();
-        break;
-      case "tstworkspace-reload":
-        console.debug("Reloading tabs");
-        reloadTabs(TSTW_WORKSPACE);
+      case "tstworkspace-save-current":
+        let tabs = await printTabs();
+        console.debug(tabs);
         break;
     }
   });
 
   let rootBookmark = await getBookmarkRoot();
-  console.debug("bookmark folder", rootBookmark);
   if (rootBookmark == null || rootBookmark == undefined) {
     let created = await browser.bookmarks.create({
       title: TSTW_BOOKMARK_ROOT,
       type: "folder",
     });
-    console.debug("new folder", created);
   }
 }
 

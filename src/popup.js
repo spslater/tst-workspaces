@@ -4,40 +4,50 @@ async function message(value) {
   return await browser.runtime.sendMessage(value);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("tstworkspaces-create").addEventListener(
-    "submit",
-    async (e) => {
-      e.preventDefault();
-      let form = e.target;
-      let tabs = await message({
-        type: "create",
-        name: form.workspace_name.value,
-      });
+function listener(type) {
+  return async (e) => {
+    e.preventDefault();
+    let form = e.target;
+    try {
+      let value = {type: type}
+      if (form.workspace_name) {
+        value["name"] = form.workspace_name.value;
+      }
+      let tabs = await message(value);
       console.log(tabs);
-    },
-    false
-  );
+    } catch (error) {
+      console.warn(error);
+    }
+  };
+}
 
-  document.getElementById("tstworkspaces-reload").addEventListener(
-    "submit",
-    async (e) => {
-      let form = e.target;
-      let tabs = await message({
-        type: "reload",
-        name: form.workspace_name.value,
-      });
-      console.log(tabs);
-    },
-    false
-  );
+document.addEventListener("DOMContentLoaded", () => {
+  document
+    .getElementById("tstworkspaces-create")
+    .addEventListener("submit", listener("create"), false);
+
+  document
+    .getElementById("tstworkspaces-reload")
+    .addEventListener("submit", listener("reload"), false);
+
+  document
+    .getElementById("tstworkspaces-remove")
+    .addEventListener("submit", listener("remove"), false);
+
+  document
+    .getElementById("tstworkspaces-load-bookmark")
+    .addEventListener("submit", listener("load-bookmark"), false);
 
   message({ type: "workspaces" }).then((workspaces) => {
-    let select = document.getElementById("tstworkspaces-reload").workspace_name;
+    let rlElem = document.getElementById("tstworkspaces-reload").workspace_name;
+    let rmElem = document.getElementById("tstworkspaces-remove").workspace_name;
     workspaces.forEach((workspace) => {
-      let opt = document.createElement("option");
-      opt.value = opt.innerHTML = workspace;
-      select.appendChild(opt);
+      let rlOpt = document.createElement("option");
+      rlOpt.value = rlOpt.innerHTML = workspace;
+      rlElem.appendChild(rlOpt);
+      let rmOpt = document.createElement("option");
+      rmOpt.value = rmOpt.innerHTML = workspace;
+      rmElem.appendChild(rmOpt);
     });
   });
 });
