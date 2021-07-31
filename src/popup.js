@@ -14,9 +14,11 @@ function listener(type) {
         value["name"] = form.workspace_name.value;
       }
       let tabs = await message(value);
-      console.log(tabs);
+      console.log(type, tabs);
     } catch (error) {
-      console.warn(error);
+      console.warn(type, error);
+    } finally {
+      window.close();
     }
   };
 }
