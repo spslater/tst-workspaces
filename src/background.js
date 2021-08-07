@@ -19,23 +19,23 @@ async function registerToTST() {
 }
 
 async function messageTST(value) {
-  console.debug(`Calling TST ${value["type"]}`);
+  console.debug(`[TSTW] Calling TST ${value["type"]}`);
   return await browser.runtime.sendMessage(TST_ID, value);
 }
 
 async function storageGet(key) {
-  console.debug("storage get", key);
+  console.debug("[TSTW] storage get", key);
   let value = await browser.storage.local.get(key);
   return value[key];
 }
 
 async function storageSet(value) {
-  console.debug("storage set", value);
+  console.debug("[TSTW] storage set", value);
   return await browser.storage.local.set(value);
 }
 
 async function storageRemove(key) {
-  console.debug("storage remove", key);
+  console.debug("[TSTW] storage remove", key);
   return await browser.storage.local.remove(key);
 }
 
@@ -130,6 +130,7 @@ function flattenTabs(tabs) {
 
 async function setBookmarks(folder, tabs) {
   let flat = flattenTabs(tabs);
+  console.debug("[TSTW] Flattened Bookmark Structure", flat);
   let tree = await bookmarkTree(folder);
   if (tree[0].children) {
     for (const bookmark of tree[0].children) {
@@ -141,6 +142,7 @@ async function setBookmarks(folder, tabs) {
     let bookmark = flat[i];
     bookmark["parentId"] = folder;
     bookmark["index"] = parseInt(i);
+    console.debug("[TSTW] Bookmark Struct", bookmark);
     let node = await bookmarkCreate(bookmark);
     bookmarks.push(node);
   }
@@ -161,6 +163,7 @@ async function getTabs() {
     type: "get-tree",
     window: window.id,
   });
+  console.debug("[TSTW] TST Get Tree Structure", struct);
   return formatTabList(struct);
 }
 
@@ -271,6 +274,7 @@ async function getWorkspaces() {
   if (wsList === null || wsList === undefined) {
     wsList = [];
   }
+  wsList.sort();
   return wsList;
 }
 
@@ -293,6 +297,7 @@ async function updateStorage(workspace, tabs) {
   if (!wsList.includes(workspace)) {
     wsList.push(workspace);
   }
+  wsList.sort();
   await storageSet({ [TSTW_WORKSPACES]: wsList });
   await storageSet({ [workspace]: tabs });
   return wsList;
@@ -398,7 +403,7 @@ const contextMenuItems = [
 ];
 
 async function init() {
-  console.info("Welcome to TST Workspaces");
+  console.info("[TSTW] Welcome to TST Workspaces");
   await registerToTST();
 
   browser.runtime.onMessageExternal.addListener((message, sender) => {
